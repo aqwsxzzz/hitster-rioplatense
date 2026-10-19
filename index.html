@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b12">
+<title>Hitster Rioplatense</title>
+<style>
+  :root {
+    --bg: #0b0b12; --fg: #f5f5f7; --muted: #9a9aae;
+    --pink: #ff4fa3; --cyan: #34d1f5; --purple: #b07cff; --yellow: #ffd93b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px 16px; text-align: center; overflow: hidden;
+    background-image: radial-gradient(circle at 50% 50%, transparent 30%, rgba(176,124,255,.08) 31%, transparent 33%,
+      transparent 44%, rgba(52,209,245,.08) 45%, transparent 47%, transparent 58%, rgba(255,79,163,.08) 59%, transparent 61%); }
+  .screen { display: none; flex-direction: column; align-items: center; gap: 20px; width: 100%; max-width: 420px; }
+  .screen.on { display: flex; }
+  h1 { margin: 0; font-size: 2rem; font-weight: 900; letter-spacing: -.02em;
+    background: linear-gradient(90deg, var(--pink), var(--purple), var(--cyan));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { margin: 0; color: var(--muted); line-height: 1.4; }
+  .big { font-size: 1.4rem; color: var(--fg); font-weight: 700; }
+  button { font: inherit; font-weight: 800; font-size: 1.15rem; border: 0; border-radius: 999px;
+    padding: 16px 32px; cursor: pointer; color: #111; background: var(--yellow); min-width: 220px; }
+  button.ghost { background: transparent; color: var(--fg); border: 2px solid #3a3a4a; font-size: 1rem; }
+  #video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 24px; border: 3px solid var(--cyan); background: #000; }
+  .phone { width: 90px; height: 150px; border: 6px solid var(--fg); border-radius: 18px; position: relative;
+    animation: flip 2.2s ease-in-out infinite; }
+  .phone::after { content: ""; position: absolute; left: 50%; bottom: 8px; width: 24px; height: 4px; margin-left: -12px;
+    border-radius: 2px; background: var(--fg); }
+  @keyframes flip { 0%, 30% { transform: rotateY(0); } 60%, 100% { transform: rotateY(180deg); opacity: .35; } }
+  .eq { display: flex; gap: 8px; height: 90px; align-items: flex-end; }
+  .eq i { width: 16px; border-radius: 8px; background: var(--pink); animation: eq 0.9s ease-in-out infinite alternate; }
+  .eq i:nth-child(2) { background: var(--purple); animation-delay: .2s; }
+  .eq i:nth-child(3) { background: var(--cyan); animation-delay: .4s; }
+  .eq i:nth-child(4) { background: var(--yellow); animation-delay: .1s; }
+  .eq.paused i { animation-play-state: paused; }
+  @keyframes eq { from { height: 20%; } to { height: 100%; } }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .row button { min-width: 0; }
+  /* The YouTube player has to exist to play, but nobody should see it. */
+  #playerBox { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; pointer-events: none; }
+  #playerCover { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; background: var(--bg); z-index: 2; }
+</style>
+</head>
+<body>
+
+<section class="screen on" id="s-start">
+  <h1>Hitster Rioplatense</h1>
+  <p>Lee las cartas propias y las del juego original.</p>
+  <button id="btn-start">Empezar</button>
+</section>
+
+<section class="screen" id="s-scan">
+  <p class="big">Escaneá una carta</p>
+  <video id="video" playsinline muted></video>
+  <p id="scan-msg">&nbsp;</p>
+</section>
+
+<section class="screen" id="s-flip">
+  <div class="phone"></div>
+  <p class="big">Poné el celular boca abajo</p>
+  <p>La canción empieza cuando lo des vuelta.</p>
+  <button class="ghost" id="btn-play-now">Reproducir sin dar vuelta</button>
+</section>
+
+<section class="screen" id="s-tap">
+  <p class="big">Tocá para que suene</p>
+  <p>Este celular no deja arrancar la música solo.</p>
+  <button id="btn-tap-play">▶ Reproducir</button>
+</section>
+
+<section class="screen" id="s-play">
+  <div class="eq" id="eq"><i></i><i></i><i></i><i></i></div>
+  <p class="big">Sonando…</p>
+  <div class="row">
+    <button class="ghost" id="btn-pause">Pausa</button>
+    <button class="ghost" id="btn-replay">Desde el inicio</button>
+  </div>
+  <button id="btn-next">Siguiente carta</button>
+</section>
+
+<div id="playerBox"><div id="player"></div></div>
+<div id="playerCover"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="songs.js"></script>
+<script src="official.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const show = id => document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
+
+// ---- QR codes -------------------------------------------------------------
+// Own cards:      "HRP:<n>"
+// Official cards: "...hitstergame.com/<lang>/<number>" or ".../<lang>/<edition>/<number>"
+function videoFor(code) {
+  const own = /^HRP:(\d+)$/.exec(code.trim());
+  if (own) return { id: SONGS[own[1]], what: "carta propia " + own[1] };
+  const off = /hitstergame\.com\/([a-z-]+)\/(?:([a-z0-9]+)\/)?(\d+)/i.exec(code);
+  if (off) {
+    const key = `${off[1].toLowerCase()}/${(off[2] || "base").toLowerCase()}/${off[3]}`;
+    return { id: OFFICIAL[key], what: "carta oficial " + key };
+  }
+  return null;
+}
+
+// ---- Camera ---------------------------------------------------------------
+let stream = null, scanning = false;
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+async function startScan() {
+  show("s-scan");
+  $("scan-msg").textContent = " ";
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+  } catch (e) {
+    $("scan-msg").textContent = "No se pudo abrir la cámara. Revisá los permisos del navegador.";
+    return;
+  }
+  const v = $("video");
+  v.srcObject = stream;
+  await v.play();
+  scanning = true;
+  requestAnimationFrame(tick);
+}
+
+function stopScan() {
+  scanning = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+let lastScan = 0;
+function tick(t) {
+  if (!scanning) return;
+  const v = $("video");
+  if (t - lastScan > 120 && v.readyState >= 2) {
+    lastScan = t;
+    const w = 480, h = Math.round(480 * v.videoHeight / v.videoWidth);
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(v, 0, 0, w, h);
+    const qr = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+    if (qr && qr.data) onCode(qr.data);
+  }
+  if (scanning) requestAnimationFrame(tick);
+}
+
+function onCode(code) {
+  const hit = videoFor(code);
+  if (!hit) { $("scan-msg").textContent = "Ese QR no es una carta de Hitster."; return; }
+  if (!hit.id) { $("scan-msg").textContent = `No tengo la canción de la ${hit.what}.`; return; }
+  stopScan();
+  navigator.vibrate?.(80);
+  pending = hit.id;
+  show("s-flip");
+  waitForFaceDown();
+}
+
+// ---- Face-down detection --------------------------------------------------
+let pending = null, faceDownSince = 0, watching = false;
+
+function onOrientation(e) {
+  if (!watching || e.beta == null) return;
+  const down = Math.abs(e.beta) > 140;
+  if (!down) { faceDownSince = 0; return; }
+  if (!faceDownSince) faceDownSince = performance.now();
+  else if (performance.now() - faceDownSince > 300) { watching = false; play(); }
+}
+
+function waitForFaceDown() { faceDownSince = 0; watching = true; }
+
+async function askMotionPermission() {
+  // iOS only grants motion access from inside a tap.
+  if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission) {
+    try { await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+  }
+}
+window.addEventListener("deviceorientation", onOrientation);
+
+// ---- Player ---------------------------------------------------------------
+let player = null, playerReady = false, startedAt = 0;
+
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player("player", {
+    width: 200, height: 200,
+    playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
+    events: {
+      onReady: () => { playerReady = true; },
+      onStateChange: e => $("eq").classList.toggle("paused", e.data !== YT.PlayerState.PLAYING),
+    },
+  });
+};
+const yt = document.createElement("script");
+yt.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(yt);
+
+function play() {
+  if (!playerReady) { setTimeout(play, 300); return; }
+  watching = false;
+  player.unMute();
+  player.setVolume(100);
+  player.loadVideoById(pending);
+  startedAt = performance.now();
+  show("s-play");
+  // Some phones (mostly iPhone) block sound that doesn't start from a tap.
+  setTimeout(() => {
+    if (player.getPlayerState() !== YT.PlayerState.PLAYING && performance.now() - startedAt >= 2400) show("s-tap");
+  }, 2500);
+}
+
+$("btn-start").onclick = async () => {
+  await askMotionPermission();
+  try { await navigator.wakeLock?.request("screen"); } catch (e) {}
+  startScan();
+};
+$("btn-play-now").onclick = play;
+$("btn-tap-play").onclick = () => { player.playVideo(); show("s-play"); };
+$("btn-pause").onclick = () => {
+  const playing = player.getPlayerState() === YT.PlayerState.PLAYING;
+  playing ? player.pauseVideo() : player.playVideo();
+  $("btn-pause").textContent = playing ? "Seguir" : "Pausa";
+};
+$("btn-replay").onclick = () => { player.seekTo(0, true); player.playVideo(); };
+$("btn-next").onclick = () => { player.stopVideo(); $("btn-pause").textContent = "Pausa"; startScan(); };
+</script>
+</body>
+</html>
