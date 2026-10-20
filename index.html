@@ -43,8 +43,8 @@
   .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   .row button { min-width: 0; }
   /* The YouTube player has to exist to play, but nobody should see it. */
-  #playerBox { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; pointer-events: none; }
-  #playerCover { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; background: var(--bg); z-index: 2; }
+  #playerBox { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; pointer-events: none;
+    opacity: 0; z-index: -1; }
 </style>
 </head>
 <body>
@@ -86,7 +86,6 @@
 </section>
 
 <div id="playerBox"><div id="player"></div></div>
-<div id="playerCover"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="songs.js"></script>
