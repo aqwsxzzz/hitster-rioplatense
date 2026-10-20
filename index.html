@@ -53,6 +53,7 @@
   <h1>Hitster Rioplatense</h1>
   <p>Lee las cartas propias y las del juego original.</p>
   <button id="btn-start">Empezar</button>
+  <p id="brave-tip" hidden>Tip: abrilo en Brave para que no salte publicidad entre canciones.</p>
 </section>
 
 <section class="screen" id="s-scan">
@@ -92,18 +93,20 @@
 <script src="official.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const show = id => document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
+if (!navigator.brave) $("brave-tip").hidden = false;
+const show = id =>document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
 
 // ---- QR codes -------------------------------------------------------------
 // Own cards:      "HRP:<n>"
-// Official cards: "...hitstergame.com/<lang>/<number>" or ".../<lang>/<edition>/<number>"
+// Official cards: a hitstergame.com link ending in the card number. We only own
+// one edition (Argentina, AR01), so the number alone picks the song.
 function videoFor(code) {
   const own = /^HRP:(\d+)$/.exec(code.trim());
   if (own) return { id: SONGS[own[1]], what: "carta propia " + own[1] };
-  const off = /hitstergame\.com\/([a-z-]+)\/(?:([a-z0-9]+)\/)?(\d+)/i.exec(code);
+  const off = /hitstergame\.com\/.*?(\d+)\/?$/i.exec(code.trim());
   if (off) {
-    const key = `${off[1].toLowerCase()}/${(off[2] || "base").toLowerCase()}/${off[3]}`;
-    return { id: OFFICIAL[key], what: "carta oficial " + key };
+    const n = String(parseInt(off[1], 10));
+    return { id: OFFICIAL[n], what: `carta oficial ${n} (${code})` };
   }
   return null;
 }
