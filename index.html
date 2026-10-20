@@ -65,7 +65,7 @@
 <section class="screen" id="s-flip">
   <div class="phone"></div>
   <p class="big">Poné el celular boca abajo</p>
-  <p>La canción empieza cuando lo des vuelta.</p>
+  <p id="flip-msg">La canción empieza cuando lo des vuelta.</p>
   <button class="ghost" id="btn-play-now">Reproducir sin dar vuelta</button>
 </section>
 
@@ -164,25 +164,55 @@ function onCode(code) {
 }
 
 // ---- Face-down detection --------------------------------------------------
-let pending = null, faceDownSince = 0, watching = false;
+// Two sensors, either one is enough: orientation (beta near ±180 = face down)
+// and gravity on the screen axis flipping sign. Some browsers (Brave) block one.
+let pending = null, faceDownSince = 0, watching = false, lastSensor = 0, baseZ = 0;
 
-function onOrientation(e) {
-  if (!watching || e.beta == null) return;
-  const down = Math.abs(e.beta) > 140;
+function faceDown(down) {
+  lastSensor = performance.now();
+  if (!watching) return;
   if (!down) { faceDownSince = 0; return; }
   if (!faceDownSince) faceDownSince = performance.now();
   else if (performance.now() - faceDownSince > 300) { watching = false; play(); }
 }
 
-function waitForFaceDown() { faceDownSince = 0; watching = true; }
+function onOrientation(e) {
+  if (e.beta != null) faceDown(Math.abs(e.beta) > 140);
+}
+
+function onMotion(e) {
+  const z = e.accelerationIncludingGravity?.z;
+  if (z == null) return;
+  // The z sign differs between Android and iPhone, so compare against how the
+  // phone was held while scanning (screen up-ish).
+  if (!baseZ && Math.abs(z) > 3) baseZ = Math.sign(z);
+  if (baseZ) faceDown(z * baseZ < -7);
+}
+
+function waitForFaceDown() {
+  faceDownSince = 0; watching = true; baseZ = 0;
+  const since = performance.now();
+  $("flip-msg").textContent = "La canción empieza cuando lo des vuelta.";
+  $("btn-play-now").className = "ghost";
+  setTimeout(() => {
+    if (watching && lastSensor < since) {
+      $("flip-msg").textContent = "El navegador no deja usar el sensor de movimiento. Tocá el botón y después dalo vuelta.";
+      $("btn-play-now").className = "";
+    }
+  }, 2000);
+}
 
 async function askMotionPermission() {
   // iOS only grants motion access from inside a tap.
   if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission) {
     try { await DeviceOrientationEvent.requestPermission(); } catch (e) {}
   }
+  if (typeof DeviceMotionEvent !== "undefined" && DeviceMotionEvent.requestPermission) {
+    try { await DeviceMotionEvent.requestPermission(); } catch (e) {}
+  }
 }
 window.addEventListener("deviceorientation", onOrientation);
+window.addEventListener("devicemotion", onMotion);
 
 // ---- Player ---------------------------------------------------------------
 let player = null, playerReady = false, startedAt = 0;
