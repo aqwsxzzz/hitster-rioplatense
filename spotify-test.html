@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba Spotify</title>
+<style>
+  body { margin: 0; padding: 16px; background: #0b0b12; color: #f5f5f7;
+    font-family: "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 1.3rem; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 999px; padding: 12px 20px;
+    margin: 4px 0; background: #ffd93b; color: #111; width: 100%; }
+  #log { margin-top: 12px; font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; color: #9a9aae; }
+  #log b { color: #5be38a; } #log i { color: #ff4fa3; font-style: normal; }
+</style>
+</head>
+<body>
+<h1>Prueba del reproductor de Spotify</h1>
+<p>Una canción de las cartas originales. El reproductor se ve a propósito.</p>
+<div id="embed"></div>
+<button id="tap">1. Reproducir con un toque</button>
+<button id="auto">2. Reproducir sola en 3 segundos (como al dar vuelta)</button>
+<button id="stop">Pausa</button>
+<div id="log"></div>
+
+<script>
+const log = (msg, cls) => {
+  const line = document.createElement(cls || "span");
+  line.textContent = new Date().toLocaleTimeString() + "  " + msg + "\n";
+  document.getElementById("log").appendChild(line);
+};
+log("Navegador: " + navigator.userAgent);
+let controller = null, lastPos = -1;
+
+window.onSpotifyIframeApiReady = api => {
+  api.createController(document.getElementById("embed"),
+    { uri: "spotify:track:2lpIh6Gr6HYjg1CFBaucS5", width: "100%", height: 80 },
+    c => {
+      controller = c;
+      log("Reproductor listo.", "b");
+      c.addListener("playback_update", e => {
+        const { isPaused, position, duration } = e.data;
+        const sec = Math.floor(position / 1000);
+        if (sec !== lastPos) {
+          lastPos = sec;
+          if (!isPaused) log(`Sonando: segundo ${sec} de ${Math.round(duration / 1000)}`, "b");
+        }
+      });
+    });
+};
+const s = document.createElement("script");
+s.src = "https://open.spotify.com/embed/iframe-api/v1";
+s.onerror = () => log("No se pudo cargar el reproductor de Spotify.", "i");
+document.head.appendChild(s);
+
+document.getElementById("tap").onclick = () => {
+  if (!controller) return log("Todavía no está listo.", "i");
+  log("Toque: pidiendo reproducir…"); lastPos = -1; controller.play();
+  setTimeout(() => lastPos < 0 && log("Pasaron 4 s y no sonó.", "i"), 4000);
+};
+document.getElementById("auto").onclick = () => {
+  if (!controller) return log("Todavía no está listo.", "i");
+  log("Esperando 3 s sin tocar nada…");
+  setTimeout(() => {
+    log("Pidiendo reproducir sin toque…"); lastPos = -1; controller.play();
+    setTimeout(() => lastPos < 0 && log("Pasaron 4 s y no sonó (bloqueado sin toque).", "i"), 4000);
+  }, 3000);
+};
+document.getElementById("stop").onclick = () => controller && controller.pause();
+</script>
+</body>
+</html>
