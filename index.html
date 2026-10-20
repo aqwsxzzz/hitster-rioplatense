@@ -66,6 +66,7 @@
   <p class="big">Poné el celular boca abajo</p>
   <p id="flip-msg">La canción empieza cuando lo des vuelta.</p>
   <button class="ghost" id="btn-play-now">Reproducir sin dar vuelta</button>
+  <p id="card-no"></p>
 </section>
 
 <section class="screen" id="s-tap">
@@ -99,11 +100,11 @@ const show = id =>document.querySelectorAll(".screen").forEach(s => s.classList.
 // one edition (Argentina, AR01), so the number alone picks the song.
 function videoFor(code) {
   const own = /^HRP:(\d+)$/.exec(code.trim());
-  if (own) return { id: SONGS[own[1]], what: "carta propia " + own[1] };
-  const off = /hitstergame\.com\/.*?(\d+)\/?$/i.exec(code.trim());
+  if (own) return { id: SONGS[own[1]], what: "Carta propia nº " + own[1] };
+  const off = /hitstergame\.com\/[^?#]*?(\d+)\/?(?:[?#].*)?$/i.exec(code.trim());
   if (off) {
     const n = String(parseInt(off[1], 10));
-    return { id: OFFICIAL[n], what: `carta oficial ${n} (${code})` };
+    return { id: OFFICIAL[n], what: "Carta original nº " + n };
   }
   return null;
 }
@@ -152,10 +153,12 @@ function tick(t) {
 
 function onCode(code) {
   const hit = videoFor(code);
-  if (!hit) { $("scan-msg").textContent = "Ese QR no es una carta de Hitster."; return; }
-  if (!hit.id) { $("scan-msg").textContent = `No tengo la canción de la ${hit.what}.`; return; }
+  // Show what was read, so a screenshot is enough to diagnose an unknown card.
+  if (!hit) { $("scan-msg").textContent = `No reconozco este QR. Dice: ${code}`; return; }
+  if (!hit.id) { $("scan-msg").textContent = `${hit.what}: no tengo su canción. El QR dice: ${code}`; return; }
   stopScan();
   navigator.vibrate?.(80);
+  $("card-no").textContent = hit.what;
   load(hit.id);
   show("s-flip");
   waitForFaceDown();
