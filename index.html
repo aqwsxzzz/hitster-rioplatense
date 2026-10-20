@@ -42,13 +42,9 @@
   @keyframes eq { from { height: 20%; } to { height: 100%; } }
   .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   .row button { min-width: 0; }
-  /* The YouTube player has to exist to play, but nobody should see it. */
-  #playerBox { position: fixed; left: 0; bottom: 0; width: 200px; height: 200px; pointer-events: none;
+  /* The Spotify player has to exist to play, but nobody should see it. */
+  #playerBox { position: fixed; left: 0; bottom: 0; width: 300px; height: 80px; pointer-events: none;
     opacity: 0; z-index: -1; }
-  /* When the browser won't start sound on its own, the (still invisible) player
-     covers the screen so the tap lands inside YouTube itself. */
-  #playerBox.tap { left: 0; top: 0; width: 100vw; height: 100vh; opacity: .01; z-index: 10; pointer-events: auto; }
-  #playerBox.tap iframe { width: 100% !important; height: 100% !important; }
 </style>
 </head>
 <body>
@@ -57,7 +53,6 @@
   <h1>Hitster Rioplatense</h1>
   <p>Lee las cartas propias y las del juego original.</p>
   <button id="btn-start">Empezar</button>
-  <p id="brave-tip" hidden>Tip: abrilo en Brave para que no salte publicidad entre canciones.</p>
 </section>
 
 <section class="screen" id="s-scan">
@@ -74,8 +69,9 @@
 </section>
 
 <section class="screen" id="s-tap">
-  <p class="big">Tocá en cualquier parte de la pantalla</p>
-  <p>El navegador no deja arrancar la música solo. Después de este toque, las próximas cartas deberían sonar solas.</p>
+  <p class="big">Tocá para que suene</p>
+  <p>El navegador no deja arrancar la música solo.</p>
+  <button id="btn-tap-play">▶ Reproducir</button>
 </section>
 
 <section class="screen" id="s-play">
@@ -95,7 +91,6 @@
 <script src="official.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-if (!navigator.brave) $("brave-tip").hidden = false;
 const show = id =>document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
 
 // ---- QR codes -------------------------------------------------------------
@@ -161,7 +156,7 @@ function onCode(code) {
   if (!hit.id) { $("scan-msg").textContent = `No tengo la canción de la ${hit.what}.`; return; }
   stopScan();
   navigator.vibrate?.(80);
-  pending = hit.id;
+  load(hit.id);
   show("s-flip");
   waitForFaceDown();
 }
@@ -169,7 +164,7 @@ function onCode(code) {
 // ---- Face-down detection --------------------------------------------------
 // Two sensors, either one is enough: orientation (beta near ±180 = face down)
 // and gravity on the screen axis flipping sign. Some browsers (Brave) block one.
-let pending = null, faceDownSince = 0, watching = false, lastSensor = 0, baseZ = 0;
+let faceDownSince = 0, watching = false, lastSensor = 0, baseZ = 0;
 
 function faceDown(down) {
   lastSensor = performance.now();
@@ -218,46 +213,41 @@ window.addEventListener("deviceorientation", onOrientation);
 window.addEventListener("devicemotion", onMotion);
 
 // ---- Player ---------------------------------------------------------------
-let player = null, playerReady = false, startedAt = 0;
+// Spotify's embeddable player: plays the 30-second preview, no login, no ads.
+let ctrl = null, isPlaying = false, startedAt = 0;
 
-window.onYouTubeIframeAPIReady = () => {
-  player = new YT.Player("player", {
-    width: 200, height: 200,
-    playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
-    events: {
-      onReady: () => { playerReady = true; },
-      onStateChange: e => {
-        const playing = e.data === YT.PlayerState.PLAYING;
-        $("eq").classList.toggle("paused", !playing);
-        if (playing && $("playerBox").classList.contains("tap")) {
-          $("playerBox").classList.remove("tap");
-          show("s-play");
-        }
-      },
-    },
+window.onSpotifyIframeApiReady = api => {
+  const first = Object.values(OFFICIAL)[0] || Object.values(SONGS)[0];
+  api.createController($("player"), { uri: "spotify:track:" + first, width: 300, height: 80 }, c => {
+    ctrl = c;
+    c.addListener("playback_update", e => {
+      isPlaying = !e.data.isPaused && e.data.position > 0;
+      $("eq").classList.toggle("paused", !isPlaying);
+      $("btn-pause").textContent = isPlaying ? "Pausa" : "Seguir";
+      if (isPlaying && $("s-tap").classList.contains("on")) show("s-play");
+    });
   });
 };
-const yt = document.createElement("script");
-yt.src = "https://www.youtube.com/iframe_api";
-document.head.appendChild(yt);
+const sp = document.createElement("script");
+sp.src = "https://open.spotify.com/embed/iframe-api/v1";
+document.head.appendChild(sp);
+
+function load(id) {
+  if (!ctrl) { setTimeout(() => load(id), 300); return; }
+  isPlaying = false;
+  ctrl.loadUri("spotify:track:" + id);
+}
 
 function play() {
-  if (!playerReady) { setTimeout(play, 300); return; }
+  if (!ctrl) { setTimeout(play, 300); return; }
   watching = false;
-  player.unMute();
-  player.setVolume(100);
-  player.loadVideoById(pending);
+  ctrl.play();
   const started = startedAt = performance.now();
   show("s-play");
-  // Some browsers (Brave, iPhone) block sound that doesn't start from a tap
-  // inside the player. Give loading/buffering time before deciding that.
+  // If the browser refuses to start sound without a tap, ask for one.
   const check = () => {
-    if (startedAt !== started) return;  // a newer song took over
-    const s = player.getPlayerState();
-    if (s === YT.PlayerState.PLAYING) return;
-    if (s === YT.PlayerState.BUFFERING && performance.now() - started < 8000) { setTimeout(check, 500); return; }
-    if (performance.now() - started < 3000) { setTimeout(check, 500); return; }
-    $("playerBox").classList.add("tap");
+    if (startedAt !== started || isPlaying) return;
+    if (performance.now() - started < 4000) { setTimeout(check, 500); return; }
     show("s-tap");
   };
   setTimeout(check, 1000);
@@ -269,13 +259,10 @@ $("btn-start").onclick = async () => {
   startScan();
 };
 $("btn-play-now").onclick = play;
-$("btn-pause").onclick = () => {
-  const playing = player.getPlayerState() === YT.PlayerState.PLAYING;
-  playing ? player.pauseVideo() : player.playVideo();
-  $("btn-pause").textContent = playing ? "Seguir" : "Pausa";
-};
-$("btn-replay").onclick = () => { player.seekTo(0, true); player.playVideo(); };
-$("btn-next").onclick = () => { player.stopVideo(); $("btn-pause").textContent = "Pausa"; startScan(); };
+$("btn-tap-play").onclick = () => ctrl.play();
+$("btn-pause").onclick = () => ctrl.togglePlay();
+$("btn-replay").onclick = () => { ctrl.seek(0); ctrl.resume(); };
+$("btn-next").onclick = () => { ctrl.pause(); startScan(); };
 </script>
 </body>
 </html>
