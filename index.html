@@ -142,10 +142,10 @@ function tick(t) {
   const v = $("video");
   if (t - lastScan > 120 && v.readyState >= 2) {
     lastScan = t;
-    const w = 480, h = Math.round(480 * v.videoHeight / v.videoWidth);
+    const w = 640, h = Math.round(640 * v.videoHeight / v.videoWidth);
     canvas.width = w; canvas.height = h;
     ctx.drawImage(v, 0, 0, w, h);
-    const qr = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+    const qr = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "attemptBoth" });
     if (qr && qr.data) onCode(qr.data);
   }
   if (scanning) requestAnimationFrame(tick);
