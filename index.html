@@ -101,6 +101,8 @@ const show = id =>document.querySelectorAll(".screen").forEach(s => s.classList.
 function videoFor(code) {
   const own = /^HRP:(\d+)$/.exec(code.trim());
   if (own) return { id: SONGS[own[1]], what: "Carta propia nº " + own[1] };
+  const printed = /^HRO:(\d+)$/.exec(code.trim());  // our printed copies of the original cards
+  if (printed) return { id: OFFICIAL[printed[1]], what: "Carta original nº " + printed[1] };
   const off = /hitstergame\.com\/[^?#]*?(\d+)\/?(?:[?#].*)?$/i.exec(code.trim());
   if (off) {
     const n = String(parseInt(off[1], 10));
