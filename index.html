@@ -45,6 +45,12 @@
   /* The Spotify player has to exist to play, but nobody should see it. */
   #playerBox { position: fixed; left: 0; bottom: 0; width: 300px; height: 80px; pointer-events: none;
     opacity: 0; z-index: -1; }
+  #answer { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-radius: 18px;
+    background: var(--pink); color: #111; width: 100%; }
+  #answer[hidden] { display: none; }
+  #answer .who { font-weight: 800; font-size: 1.2rem; }
+  #answer .when { font-weight: 900; font-size: 3.6rem; line-height: 1; }
+  #answer .what { font-style: italic; font-weight: 700; font-size: 1.1rem; }
 </style>
 </head>
 <body>
@@ -82,6 +88,8 @@
     <button class="ghost" id="btn-pause">Pausa</button>
     <button class="ghost" id="btn-replay">Desde el inicio</button>
   </div>
+  <button class="ghost" id="btn-reveal">Ver respuesta</button>
+  <div id="answer" hidden><span class="who"></span><span class="when"></span><span class="what"></span></div>
   <button id="btn-next">Siguiente carta</button>
 </section>
 
@@ -90,9 +98,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="songs.js"></script>
 <script src="official.js"></script>
+<script src="answers.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const show = id =>document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
+const show = id => document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
 
 // ---- QR codes -------------------------------------------------------------
 // Own cards:      "HRP:<n>"
@@ -100,13 +109,13 @@ const show = id =>document.querySelectorAll(".screen").forEach(s => s.classList.
 // one edition (Argentina, AR01), so the number alone picks the song.
 function videoFor(code) {
   const own = /^HRP:(\d+)$/.exec(code.trim());
-  if (own) return { id: SONGS[own[1]], what: "Carta propia nº " + own[1] };
+  if (own) return { id: SONGS[own[1]], key: ["c", own[1]], what: "Carta propia nº " + own[1] };
   const printed = /^HRO:(\d+)$/.exec(code.trim());  // our printed copies of the original cards
-  if (printed) return { id: OFFICIAL[printed[1]], what: "Carta original nº " + printed[1] };
+  if (printed) return { id: OFFICIAL[printed[1]], key: ["o", printed[1]], what: "Carta original nº " + printed[1] };
   const off = /hitstergame\.com\/[^?#]*?(\d+)\/?(?:[?#].*)?$/i.exec(code.trim());
   if (off) {
     const n = String(parseInt(off[1], 10));
-    return { id: OFFICIAL[n], what: "Carta original nº " + n };
+    return { id: OFFICIAL[n], key: ["o", n], what: "Carta original nº " + n };
   }
   return null;
 }
@@ -161,10 +170,38 @@ function onCode(code) {
   stopScan();
   navigator.vibrate?.(80);
   $("card-no").textContent = hit.what;
+  resetAnswer(hit.key);
   load(hit.id);
   show("s-flip");
   waitForFaceDown();
 }
+
+// ---- Answers --------------------------------------------------------------
+// answers.js holds {c: custom cards, o: original cards} -> [artist, title, year],
+// scrambled with this key by tools/build_web.py so the page source doesn't spoil it.
+const ANSWER_KEY = new TextEncoder().encode("hitster-rioplatense");
+const ANS = (() => {
+  try {
+    const bytes = Uint8Array.from(atob(window.ANSWERS || ""), (c, i) => c.charCodeAt(0) ^ ANSWER_KEY[i % ANSWER_KEY.length]);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) { return { c: {}, o: {} }; }
+})();
+let currentAnswer = null;
+
+function resetAnswer(key) {
+  currentAnswer = key ? (ANS[key[0]] || {})[key[1]] : null;
+  $("answer").hidden = true;
+  $("btn-reveal").hidden = !currentAnswer;
+}
+
+$("btn-reveal").onclick = () => {
+  const [artist, title, year] = currentAnswer;
+  $("answer").querySelector(".who").textContent = artist;
+  $("answer").querySelector(".when").textContent = year;
+  $("answer").querySelector(".what").textContent = title;
+  $("answer").hidden = false;
+  $("btn-reveal").hidden = true;
+};
 
 // ---- Face-down detection --------------------------------------------------
 // Two sensors, either one is enough: orientation (beta near ±180 = face down)
